@@ -12,8 +12,7 @@ async def fetch_and_print_all():
             swapi_people = result.scalars().all()
             for person in swapi_people:
                 print(f"id={person.id}, "
-                      f"uid_people={person.uid_people}, "
-                      f"id_people={person.id_people}, "
+                      f"person_uid={person.person_uid}, "                      
                       f"name={person.name}, "
                       f"birth_year={person.birth_year}, "
                       f"gender={person.gender}, "
@@ -30,6 +29,7 @@ async def main():
     await fetch_and_print_all()
     await close_orm()
 
-start = datetime.datetime.now()
-asyncio.run(main())
-print(datetime.datetime.now() - start)
+if __name__ == "__main__":
+    start = datetime.datetime.now()
+    asyncio.run(main())
+    print(datetime.datetime.now() - start)

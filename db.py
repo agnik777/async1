@@ -25,8 +25,7 @@ class Base(DeclarativeBase, AsyncAttrs):
 class SwapiPeople(Base):
     __tablename__ = "swapi_people"
     id: MappedColumn[int] = mapped_column(Integer, primary_key=True)
-    uid_people: MappedColumn[str] = mapped_column(String)
-    id_people: MappedColumn[str] = mapped_column(String)
+    person_uid: MappedColumn[str] = mapped_column(String, unique=True)
     name: MappedColumn[str] = mapped_column(String)
     birth_year: MappedColumn[str] = mapped_column(String)
     gender: MappedColumn[str] = mapped_column(String)
