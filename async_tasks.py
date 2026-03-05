@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import aiohttp
 import datetime
@@ -10,46 +11,80 @@ from itertools import islice
 MAX_ASYNC_REQUESTS = 5
 URL_API = "https://www.swapi.tech/api/"
 
+
 def batched(iterable, n):
     it = iter(iterable)
     while batch := tuple(islice(it, n)):
         yield batch
 
 async def get_total_count(http_session: aiohttp.ClientSession):
-    async with http_session.get(f'{URL_API}people/') as response:
-        if response.status == 200:
-            data = await response.json()
-            return data['total_records']
+    try:
+        async with http_session.get(f'{URL_API}people/') as response:
+            if response.status == 200:
+                data = await response.json()
+                return data['total_records']
+            else:
+                print(f'Ошибка: {response.status}')
+                sys.exit(1)
+    except Exception as e:
+        print(f'Ошибка получения данных: {e}')
+        sys.exit(1)
 
-async def get_peoples_uid(http_session: aiohttp.ClientSession, total_records: int):
-    async with http_session.get(f'{URL_API}people?page=1&limit={total_records}') as response:
-        if response.status == 200:
-            data = await response.json()
-            all_peoples = data['results']
-            all_peoples_uid = []
-            for person in all_peoples:
-                all_peoples_uid.append(int(person['uid']))
-            return all_peoples_uid
+async def get_peoples_uid(http_session: aiohttp.ClientSession,
+                          total_records: int):
+    url = f'{URL_API}people?page=1&limit={total_records}'
+    try:
+        async with http_session.get(url) as response:
+            if response.status == 200:
+                data = await response.json()
+                all_peoples = data['results']
+                all_peoples_uid = [int(person['uid']) for person in all_peoples]
+                return all_peoples_uid
+            else:
+                print(f'Ошибка: {response.status}')
+                sys.exit(1)
+    except Exception as e:
+        print(f'Ошибка получения данных: {e}')
+        sys.exit(1)
 
-async def get_planet_name(person_result: dict, http_session: aiohttp.ClientSession):
+async def get_planet_name(person_result: dict,
+                          http_session: aiohttp.ClientSession):
+    if person_result is None:
+        return None
     url = person_result['result']['properties']['homeworld']
-    async with http_session.get(url) as response:
-        if response.status == 200:
-            json_data = await response.json()
-            person_result['result']['properties']['homeworld'] = json_data['result']['properties']['name']
-        return person_result
+    try:
+        async with (http_session.get(url) as response):
+            if response.status == 200:
+                json_data = await response.json()
+                planet_name = json_data['result']['properties']['name']
+                person_result['result']['properties']['homeworld'] = planet_name
+            return person_result
+    except Exception as e:
+        print(f'Ошибка получения данных: {e}')
+        return None
 
 async def get_people(person_id: int, http_session: aiohttp.ClientSession):
     url = f'{URL_API}people/{person_id}/'
-    async with http_session.get(url) as response:
-        if response.status == 200:
-            json_data = await response.json()
-            return json_data
+    try:
+        async with http_session.get(url) as response:
+            if response.status == 200:
+                json_data = await response.json()
+                return json_data
+            else:
+                print(f'Ошибка: {response.status}')
+                return None
+    except Exception as e:
+        print(f'Ошибка получения данных: {e}')
+        return None
 
 async def insert_results(results: list[dict]):
+    if not results:
+        return
     async with DbSession() as session:
         peoples_list =[]
         for person in results:
+            if person is None:
+                continue
             result = person["result"]
             properties = result["properties"]
             people = SwapiPeople(
@@ -68,12 +103,13 @@ async def insert_results(results: list[dict]):
             session.add_all(peoples_list)
             await session.commit()
         except IntegrityError:
-            print(f"Persons have already been added")
+            print(f"Персонажи уже добавлены в базу данных")
 
 async def process_batch(batch: list, http_session: aiohttp.ClientSession):
     coros = [get_people(i, http_session) for i in batch]
     results = await asyncio.gather(*coros)
-    person_coros = [get_planet_name(person_result, http_session) for person_result in results]
+    person_coros = [get_planet_name(person_result, http_session)
+                    for person_result in results]
     person_results = await asyncio.gather(*person_coros)
     await insert_results(person_results)
 
@@ -83,7 +119,8 @@ async def main():
         number_requests = await get_total_count(http_session)
         all_uid = await get_peoples_uid(http_session, int(number_requests))
         print(f"Total uids: {len(all_uid)}", all_uid)
-        tasks = [asyncio.create_task(process_batch(batch, http_session)) for batch in batched(all_uid, MAX_ASYNC_REQUESTS)]
+        tasks = [asyncio.create_task(process_batch(batch, http_session))
+                 for batch in batched(all_uid, MAX_ASYNC_REQUESTS)]
         await asyncio.gather(*tasks)
     await close_orm()
 
